@@ -91,6 +91,48 @@ button:hover {
   filter: brightness(1.1);
 }
 
+button.secondary {
+  background: transparent;
+  border: 1px solid var(--border);
+}
+
+.button-row {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+select {
+  background: #0c1120;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.6rem 0.75rem;
+  color: var(--text);
+  font-size: 1rem;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+th, td {
+  text-align: left;
+  padding: 0.5rem 0.6rem;
+  border-bottom: 1px solid var(--border);
+}
+
+tr.best {
+  background: rgba(52, 199, 123, 0.1);
+}
+
+.hint {
+  color: var(--muted);
+  font-size: 0.8rem;
+  margin-top: 0.5rem;
+}
+
 #status {
   color: var(--muted);
   min-height: 1.2em;

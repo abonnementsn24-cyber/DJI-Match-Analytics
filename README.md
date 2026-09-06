@@ -13,24 +13,42 @@ d'un modèle **Poisson + Elo** sur des données historiques.
 ## Comment ça marche
 
 ```
-Données de matchs → Elo (force des équipes) → Poisson (buts attendus)
-                  → matrice des scores → probabilités 1/N/2, BTTS, scores
+Données de matchs → Elo + statistiques de forme/domicile-extérieur/H2H
+                  → buts attendus (3 modèles) → matrice de Poisson
+                  → probabilités 1/N/2, BTTS, scores
 ```
+
+Trois modèles sont calculés et comparables côte à côte, du plus simple au
+plus complet :
+
+| Modèle | Principe |
+| --- | --- |
+| `simple` | Force d'attaque/défense de chaque équipe (domicile/extérieur séparés) sur tout l'historique, vs. moyenne de ligue. |
+| `form` | Même principe, mais sur les 10 derniers matchs seulement (réagit plus vite à une bonne/mauvaise série). |
+| `combined` | Moyenne du modèle Elo et du modèle de forme, ajustée par la confrontation directe (H2H) historique. C'est le modèle utilisé par défaut. |
 
 1. **Elo** : chaque match met à jour la force estimée des deux équipes
    (avantage du terrain inclus), en pondérant plus fortement les victoires
    larges.
-2. **Poisson** : l'écart de rating Elo entre les deux équipes ajuste leurs
-   buts attendus autour de moyennes de ligue, avec une légère correction
-   Dixon-Coles sur les scores faibles (0-0, 1-0, 0-1, 1-1).
-3. **Décision** : si une équipe a joué moins de 5 matchs, l'API renvoie
+2. **Statistiques par équipe** : matchs joués, buts marqués/encaissés à
+   domicile et à l'extérieur, forme sur les 10 derniers matchs, et
+   historique des confrontations directes (H2H) — tout est reconstruit en
+   rejouant les matchs stockés dans l'ordre chronologique.
+3. **Poisson** : les buts attendus (selon le modèle choisi) alimentent une
+   matrice de scores Poisson, avec une légère correction Dixon-Coles sur
+   les scores faibles (0-0, 1-0, 0-1, 1-1).
+4. **Décision** : si une équipe a joué moins de 5 matchs, l'API renvoie
    `"reliable": false` avec une raison plutôt qu'une prédiction fantaisiste.
    Un indice de confiance (faible/moyenne/élevée) est renvoyé sinon, basé
    sur la taille de l'historique disponible.
-4. **Backtesting** : `/backtest` rejoue tous les matchs stockés en
-   chronologique (sans anticipation) et mesure le Brier score et la
-   précision du modèle — la priorité avant de faire confiance aux
-   probabilités affichées.
+5. **Backtesting** : `/backtest` (et `/backtest/compare` pour les 3
+   modèles) rejoue tous les matchs stockés en chronologique (sans
+   anticipation) et mesure le Brier score, le log loss, la précision et
+   une courbe de calibration — la priorité avant de faire confiance aux
+   probabilités affichées. `/backtest/compare` indique aussi quel modèle
+   est le mieux calibré (Brier score le plus bas) sur l'historique
+   disponible, plutôt que de supposer que le plus complexe est le
+   meilleur.
 
 ## Structure du projet
 
@@ -62,9 +80,14 @@ PostgreSQL) pour utiliser une autre base.
 
 | Endpoint | Description |
 | --- | --- |
-| `GET /predict?home=X&away=Y` | Prédiction complète pour un match |
+| `GET /predict?home=X&away=Y&model=combined` | Prédiction complète pour un match (`model` : `simple`, `form` ou `combined`) |
+| `GET /predict/compare?home=X&away=Y` | Prédiction des 3 modèles côte à côte |
 | `GET /teams` | Liste des équipes connues |
-| `GET /backtest` | Rapport de calibration sur l'historique stocké |
+| `GET /teams/{name}/stats` | Statistiques d'une équipe (domicile/extérieur, forme récente) |
+| `GET /h2h?team_a=X&team_b=Y` | Historique des confrontations directes entre deux équipes |
+| `GET /standings?competition=X` | Classement calculé à partir des matchs stockés |
+| `GET /backtest?model=combined` | Rapport de calibration (Brier score, log loss, précision, courbe de calibration) pour un modèle |
+| `GET /backtest/compare` | Backtest des 3 modèles + indication du mieux calibré |
 | `POST /data/import/football-data?competition=PL` | Importe les matchs terminés depuis football-data.org |
 
 ### Importer de vraies données
@@ -102,7 +125,10 @@ pytest
 - Ajouter les grands championnats et compétitions africaines/internationales
   via le connecteur football-data.org.
 - Intégrer des données de composition/blessures quand disponibles.
-- Étendre le moteur avec un modèle ML complémentaire (ensemble avec
-  Poisson+Elo plutôt qu'un remplacement).
-- Suivre dans le temps la calibration réelle du modèle (comparaison
-  prédiction vs résultat, historique de performance).
+- Étendre le moteur avec un modèle ML complémentaire (ensemble avec les
+  modèles existants plutôt qu'un remplacement).
+- Enregistrer chaque prédiction générée et la comparer au résultat réel une
+  fois le match joué, pour suivre la calibration dans le temps plutôt que de
+  ne la mesurer que rétrospectivement via `/backtest`.
+- Tableau de bord des matchs du jour/à venir, avec pages détaillées par
+  match et historique des prédictions passées.

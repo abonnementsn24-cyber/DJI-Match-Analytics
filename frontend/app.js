@@ -1,6 +1,7 @@
 const apiBaseInput = document.getElementById("api-base");
 const homeInput = document.getElementById("home-team");
 const awayInput = document.getElementById("away-team");
+const modelSelect = document.getElementById("model-select");
 const teamList = document.getElementById("team-list");
 const statusEl = document.getElementById("status");
 
@@ -10,6 +11,14 @@ const reliableView = document.getElementById("reliable-view");
 const unreliableView = document.getElementById("unreliable-view");
 const unreliableReason = document.getElementById("unreliable-reason");
 
+const compareSection = document.getElementById("compare-result");
+const compareTable = document.getElementById("compare-table");
+
+const MODEL_LABELS = {
+  simple: "Poisson simple",
+  form: "Poisson + forme",
+  combined: "Poisson + forme + Elo + H2H",
+};
 const CONFIDENCE_LABELS = { faible: "faible", moyenne: "moyenne", elevee: "élevée" };
 
 function apiBase() {
@@ -41,9 +50,10 @@ async function predict() {
 
   statusEl.textContent = "Calcul en cours...";
   resultSection.classList.add("hidden");
+  compareSection.classList.add("hidden");
 
   try {
-    const url = `${apiBase()}/predict?home=${encodeURIComponent(home)}&away=${encodeURIComponent(away)}`;
+    const url = `${apiBase()}/predict?home=${encodeURIComponent(home)}&away=${encodeURIComponent(away)}&model=${modelSelect.value}`;
     const response = await fetch(url);
     if (!response.ok) {
       statusEl.textContent = `Erreur API (${response.status}).`;
@@ -85,19 +95,106 @@ function renderResult(data) {
     .join("");
 }
 
-async function runBacktest() {
-  const output = document.getElementById("backtest-result");
-  output.textContent = "Calcul en cours...";
+async function compareModels() {
+  const home = homeInput.value.trim();
+  const away = awayInput.value.trim();
+  if (!home || !away) {
+    statusEl.textContent = "Renseignez les deux équipes.";
+    return;
+  }
+
+  statusEl.textContent = "Comparaison en cours...";
+  resultSection.classList.add("hidden");
+  compareSection.classList.add("hidden");
+
   try {
-    const response = await fetch(`${apiBase()}/backtest`);
+    const url = `${apiBase()}/predict/compare?home=${encodeURIComponent(home)}&away=${encodeURIComponent(away)}`;
+    const response = await fetch(url);
+    if (!response.ok) {
+      statusEl.textContent = `Erreur API (${response.status}).`;
+      return;
+    }
     const data = await response.json();
-    output.textContent = JSON.stringify(data, null, 2);
+    renderCompare(data);
+    statusEl.textContent = "";
   } catch (err) {
-    output.textContent = "Impossible de contacter l'API.";
+    statusEl.textContent = "Impossible de contacter l'API.";
   }
 }
 
+function renderCompare(data) {
+  compareSection.classList.remove("hidden");
+  const models = ["simple", "form", "combined"];
+
+  if (!models.some((m) => data[m].reliable)) {
+    compareTable.innerHTML = `<p class="warning">${data.combined.reason}</p>`;
+    return;
+  }
+
+  const rows = models
+    .map((m) => {
+      const p = data[m];
+      if (!p.reliable) return "";
+      return `<tr>
+        <td>${MODEL_LABELS[m]}</td>
+        <td>${pct(p.home_win)}</td>
+        <td>${pct(p.draw)}</td>
+        <td>${pct(p.away_win)}</td>
+        <td>${pct(p.btts)}</td>
+        <td>${p.top_scores[0].score}</td>
+      </tr>`;
+    })
+    .join("");
+
+  compareTable.innerHTML = `
+    <table>
+      <thead>
+        <tr><th>Modèle</th><th>Domicile</th><th>Nul</th><th>Extérieur</th><th>BTTS</th><th>Score le + probable</th></tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+}
+
+async function runBacktest() {
+  const output = document.getElementById("backtest-result");
+  output.innerHTML = "<p>Calcul en cours...</p>";
+  try {
+    const response = await fetch(`${apiBase()}/backtest/compare`);
+    const data = await response.json();
+    renderBacktest(data, output);
+  } catch (err) {
+    output.innerHTML = "<p>Impossible de contacter l'API.</p>";
+  }
+}
+
+function renderBacktest(data, output) {
+  const rows = Object.entries(data.models)
+    .map(([name, report]) => {
+      const isBest = name === data.best_model;
+      return `<tr${isBest ? ' class="best"' : ""}>
+        <td>${MODEL_LABELS[name]}${isBest ? " ⭐" : ""}</td>
+        <td>${report.matches_evaluated}</td>
+        <td>${report.brier_score ?? "—"}</td>
+        <td>${report.log_loss ?? "—"}</td>
+        <td>${report.accuracy != null ? pct(report.accuracy) : "—"}</td>
+      </tr>`;
+    })
+    .join("");
+
+  output.innerHTML = `
+    <table>
+      <thead>
+        <tr><th>Modèle</th><th>Matchs évalués</th><th>Brier score</th><th>Log loss</th><th>Précision</th></tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <p class="hint">⭐ = modèle le mieux calibré (Brier score le plus bas) sur l'historique stocké.</p>
+  `;
+}
+
 document.getElementById("predict-btn").addEventListener("click", predict);
+document.getElementById("compare-btn").addEventListener("click", compareModels);
 document.getElementById("backtest-btn").addEventListener("click", runBacktest);
 apiBaseInput.addEventListener("change", loadTeams);
 

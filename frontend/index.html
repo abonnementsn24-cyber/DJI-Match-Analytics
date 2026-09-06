@@ -34,7 +34,19 @@
       </div>
       <datalist id="team-list"></datalist>
 
-      <button id="predict-btn">Prédire le match</button>
+      <label>
+        Modèle
+        <select id="model-select">
+          <option value="combined" selected>Poisson + forme + Elo + H2H (recommandé)</option>
+          <option value="form">Poisson + forme récente</option>
+          <option value="simple">Poisson simple</option>
+        </select>
+      </label>
+
+      <div class="button-row">
+        <button id="predict-btn">Prédire le match</button>
+        <button id="compare-btn" class="secondary">Comparer les 3 modèles</button>
+      </div>
       <p id="status"></p>
     </section>
 
@@ -83,11 +95,19 @@
       </div>
     </section>
 
+    <section id="compare-result" class="panel hidden">
+      <h2>Comparaison des modèles</h2>
+      <div id="compare-table"></div>
+    </section>
+
     <section class="panel">
       <h2>Backtesting</h2>
-      <p>Mesure la fiabilité du modèle sur les matchs déjà stockés (précision et Brier score).</p>
-      <button id="backtest-btn">Lancer le backtest</button>
-      <pre id="backtest-result"></pre>
+      <p>
+        Rejoue l'historique stocké en chronologique (sans anticipation) et compare les 3 modèles :
+        Brier score, log loss, précision, et le modèle le mieux calibré sur ces données.
+      </p>
+      <button id="backtest-btn">Comparer les modèles (backtest)</button>
+      <div id="backtest-result"></div>
     </section>
   </main>
 

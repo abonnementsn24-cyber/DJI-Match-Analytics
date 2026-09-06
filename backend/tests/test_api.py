@@ -51,3 +51,54 @@ def test_predict_returns_probabilities_once_enough_matches_exist():
     assert body["reliable"] is True
     assert 0.0 <= body["home_win"] <= 1.0
     assert len(body["top_scores"]) == 3
+
+
+def test_predict_rejects_unknown_model():
+    response = client.get(
+        "/predict", params={"home": "Alpha FC", "away": "Beta United", "model": "nope"}
+    )
+    assert response.status_code == 400
+
+
+def test_predict_compare_returns_all_models():
+    response = client.get("/predict/compare", params={"home": "Alpha FC", "away": "Beta United"})
+    assert response.status_code == 200
+    body = response.json()
+    assert set(body.keys()) == {"simple", "form", "combined"}
+    for prediction in body.values():
+        assert prediction["reliable"] is True
+
+
+def test_team_stats_endpoint():
+    response = client.get("/teams/Alpha FC/stats")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["team"] == "Alpha FC"
+    assert body["home"]["matches"] == 6
+
+
+def test_team_stats_endpoint_404_for_unknown_team():
+    response = client.get("/teams/Nobody At All/stats")
+    assert response.status_code == 404
+
+
+def test_h2h_endpoint():
+    response = client.get("/h2h", params={"team_a": "Alpha FC", "team_b": "Beta United"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["matches_played"] == 6
+    assert body["wins_a"] == 6
+
+
+def test_standings_endpoint():
+    response = client.get("/standings", params={"competition": "Test League"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body[0]["team"] == "Alpha FC"
+
+
+def test_backtest_compare_endpoint():
+    response = client.get("/backtest/compare")
+    assert response.status_code == 200
+    body = response.json()
+    assert set(body["models"].keys()) == {"simple", "form", "combined"}
