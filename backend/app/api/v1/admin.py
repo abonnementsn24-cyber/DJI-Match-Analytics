@@ -13,7 +13,7 @@ from ...services.prediction_service import (
     generate_all_predictions,
     generate_predictions_for_competition,
 )
-from ...services.sync_service import sync_competition
+from ...services.sync_service import sync_competition, sync_popular_leagues
 from ..deps import get_db, require_admin_token
 
 router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(require_admin_token)])
@@ -50,6 +50,20 @@ def admin_sync(
         return report.as_dict()
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/sync-popular")
+def admin_sync_popular(provider_name: str = Query("football-data"), db: Session = Depends(get_db)) -> dict:
+    if get_settings().demo_mode:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Aucune clé FOOTBALL_DATA_API_KEY configurée — l'application tourne en "
+                "mode démo. Configurez la clé pour synchroniser des données réelles."
+            ),
+        )
+    provider = get_provider(provider_name)
+    return sync_popular_leagues(db, provider)
 
 
 @router.post("/generate-predictions")

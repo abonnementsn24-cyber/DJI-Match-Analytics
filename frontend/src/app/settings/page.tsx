@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { api, ApiError } from "@/lib/api";
 import { API_BASE_URL } from "@/lib/api";
 
@@ -38,6 +39,20 @@ export default async function SettingsPage() {
           <Row label="Modèle ML entraîné" value={status.ml_model_available ? "Oui" : "Non"} />
         </div>
       )}
+
+      <div className="card p-4 text-sm text-text-secondary">
+        <h2 className="mb-2 font-semibold text-text">Mise à jour automatique</h2>
+        <p>
+          Un planificateur interne (APScheduler) tourne en continu côté backend dès que l&apos;application démarre :
+          découverte des compétitions (toutes les 24h), synchronisation des{" "}
+          <Link href="/competitions" className="text-accent underline">
+            championnats populaires
+          </Link>{" "}
+          (toutes les 6h), évaluation des matchs terminés (toutes les 30 min) et instantané des métriques de
+          performance (toutes les 24h). Sans clé API configurée, la découverte et la synchronisation sont ignorées
+          proprement (mode démo) plutôt que d&apos;échouer.
+        </p>
+      </div>
 
       <div className="card p-4 text-sm text-text-secondary">
         <h2 className="mb-2 font-semibold text-text">Passer en données réelles</h2>

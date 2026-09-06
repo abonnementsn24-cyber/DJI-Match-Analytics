@@ -10,6 +10,7 @@ from .api.v1.router import api_router
 from .core.config import get_settings
 from .core.logging import configure_logging, get_logger
 from .db.session import init_db
+from .jobs.scheduler import start_scheduler, stop_scheduler
 from .providers.base import ProviderError
 
 logger = get_logger(__name__)
@@ -19,7 +20,9 @@ logger = get_logger(__name__)
 async def lifespan(_: FastAPI):
     configure_logging()
     init_db()
+    start_scheduler()
     yield
+    stop_scheduler()
 
 
 app = FastAPI(

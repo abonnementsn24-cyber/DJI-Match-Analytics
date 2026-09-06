@@ -6,6 +6,7 @@ import tempfile
 
 os.environ["DATABASE_URL"] = f"sqlite:///{tempfile.mktemp(suffix='.db')}"
 os.environ.setdefault("ML_ARTIFACT_DIR", tempfile.mkdtemp())
+os.environ["ENABLE_SCHEDULER"] = "false"
 
 import pytest
 

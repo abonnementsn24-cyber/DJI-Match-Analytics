@@ -267,12 +267,43 @@ frontend) prête pour un premier déploiement. Pour un déploiement séparé :
 - **Frontend** : `npm run build && npm run start`, ou toute plateforme
   compatible Next.js. Nécessite `NEXT_PUBLIC_API_BASE_URL` pointant vers le
   backend.
-- **Jobs planifiés** (§19 du cahier des charges) : la synchronisation
-  matinale, le rafraîchissement pré-match, l'évaluation post-match et le
-  recalcul nocturne des métriques sont exposés comme fonctions Python pures
-  (`services/*`) et comme endpoints admin — brancher un scheduler (cron,
-  APScheduler, Celery beat) dessus ne nécessite aucun changement de code. Non
-  câblé par défaut dans cette V1 pour rester simple à déployer.
+## Mise à jour automatique et championnats populaires
+
+Un planificateur (`app/jobs/scheduler.py`, APScheduler) démarre automatiquement
+avec l'application (désactivable via `ENABLE_SCHEDULER=false`, déjà désactivé
+dans les tests) et exécute :
+
+| Job | Fréquence | Rôle |
+| --- | --- | --- |
+| `discover` | 24h (immédiat au démarrage) | Découverte de toutes les compétitions exposées par le fournisseur |
+| `sync-popular-leagues` | 6h (immédiat au démarrage) | Synchronise en priorité les championnats populaires (voir ci-dessous), puis régénère les prédictions et évalue les matchs terminés |
+| `evaluate` | 30 min | Évalue les prédictions des matchs désormais terminés |
+| `metrics-snapshot` | 24h | Enregistre un instantané des métriques de chaque modèle dans `model_metrics` |
+
+Sans `FOOTBALL_DATA_API_KEY`, `discover` et `sync-popular-leagues` s'arrêtent
+proprement (mode démo) au lieu d'échouer.
+
+**Championnats populaires** (`app/services/popular_leagues.py`) : une liste de
+priorité pour la synchronisation automatique — Angleterre (Premier League,
+Championship), Espagne (La Liga), Italie (Serie A), Allemagne (Bundesliga),
+France (Ligue 1), Pays-Bas (Eredivisie), Portugal (Primeira Liga), Brésil
+(Série A), Ligue des Champions UEFA. **Ceci ne restreint pas la couverture** :
+`discover` continue de trouver *toutes* les compétitions exposées par le
+fournisseur (189 vérifiées en direct) — cette liste ne fait que décider
+lesquelles sont synchronisées en priorité, sur le même principe que la file
+de priorité décrite au §13 de l'extension du cahier des charges. Déclenchable
+à la demande via `python -m app.cli sync-popular` ou
+`POST /api/v1/admin/sync-popular`, et visible sans authentification sur
+`GET /api/v1/system/popular-leagues` (et dans l'interface, en haut de
+`/competitions`).
+
+**Arabie Saoudite** : vérifié en direct — football-data.org (notre seul
+fournisseur configuré) **n'expose pas la Saudi Pro League**, sur aucune offre
+(aucune compétition sous l'aire « Saudi Arabia » parmi les 189 disponibles).
+L'interface l'indique explicitement plutôt que de l'omettre silencieusement.
+L'architecture `providers/` est prête à recevoir un second fournisseur
+(API-Football, SportMonks, ...) qui la couvrirait, mais aucun n'est branché
+sans clé/API réelle pour l'un d'eux.
 
 ## Mode démo vs données réelles
 

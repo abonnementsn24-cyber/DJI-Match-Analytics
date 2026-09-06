@@ -9,6 +9,7 @@ from ...ml.artifact import load_artifact
 from ...models.competition import Competition
 from ...models.enums import MatchStatus
 from ...models.match import Match
+from ...services.popular_leagues import POPULAR_LEAGUES, UNAVAILABLE_FROM_PROVIDER
 from ..deps import get_db
 
 router = APIRouter(prefix="/system", tags=["system"])
@@ -32,3 +33,32 @@ def system_status(db: Session = Depends(get_db)) -> dict:
         ),
         "ml_model_available": load_artifact() is not None,
     }
+
+
+@router.get("/popular-leagues")
+def popular_leagues(db: Session = Depends(get_db)) -> dict:
+    """The priority list the automatic scheduler keeps in sync — see
+    app/services/popular_leagues.py. Includes leagues that are requested
+    often but not available from the currently configured provider(s),
+    so the gap is visible rather than silently absent.
+    """
+    leagues = []
+    for league in POPULAR_LEAGUES:
+        competition = (
+            db.query(Competition)
+            .filter(Competition.provider == "football-data", Competition.code == league.code)
+            .one_or_none()
+        )
+        leagues.append(
+            {
+                "code": league.code,
+                "label": league.label,
+                "country": league.country,
+                "synced": competition is not None and competition.last_sync is not None,
+                "competition_id": competition.id if competition else None,
+                "last_sync": competition.last_sync.isoformat() if competition and competition.last_sync else None,
+                "data_quality": competition.data_quality.value if competition else None,
+            }
+        )
+
+    return {"leagues": leagues, "unavailable": list(UNAVAILABLE_FROM_PROVIDER)}

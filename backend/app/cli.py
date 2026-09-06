@@ -3,6 +3,7 @@
 Usage:
     python -m app.cli discover
     python -m app.cli sync PL 2025
+    python -m app.cli sync-popular
     python -m app.cli generate-predictions PL
     python -m app.cli evaluate
 """
@@ -15,7 +16,7 @@ from .core.logging import configure_logging, get_logger
 from .db.session import SessionLocal, init_db
 from .providers.registry import get_provider
 from .services.discovery_service import discover_competitions
-from .services.sync_service import sync_competition
+from .services.sync_service import sync_competition, sync_popular_leagues
 
 logger = get_logger(__name__)
 
@@ -41,6 +42,18 @@ def cmd_sync(args: argparse.Namespace) -> int:
     except ValueError as exc:
         print(f"Erreur: {exc}", file=sys.stderr)
         return 1
+    finally:
+        db.close()
+
+
+def cmd_sync_popular(args: argparse.Namespace) -> int:
+    db = SessionLocal()
+    try:
+        provider = get_provider(args.provider)
+        results = sync_popular_leagues(db, provider)
+        for code, result in results.items():
+            print(code, result)
+        return 0 if all(r.get("ok") for r in results.values()) else 1
     finally:
         db.close()
 
@@ -88,6 +101,11 @@ def build_parser() -> argparse.ArgumentParser:
     sync_parser.add_argument("code", help="Code de la compétition, ex: PL")
     sync_parser.add_argument("season", type=int, nargs="?", default=None, help="Année de saison, ex: 2025")
     sync_parser.set_defaults(func=cmd_sync)
+
+    sync_popular_parser = subparsers.add_parser(
+        "sync-popular", help="Synchronise les championnats populaires (voir services/popular_leagues.py)"
+    )
+    sync_popular_parser.set_defaults(func=cmd_sync_popular)
 
     predict_parser = subparsers.add_parser(
         "generate-predictions", help="Génère les prédictions manquantes pour une compétition"

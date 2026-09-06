@@ -8,6 +8,7 @@ import type {
   ModelListEntry,
   ModelMetricsEntry,
   PaginatedMatches,
+  PopularLeaguesResponse,
   StandingRow,
   SystemStatus,
   Team,
@@ -61,6 +62,8 @@ async function apiFetch<T>(path: string, params?: Record<string, string | number
 
 export const api = {
   systemStatus: () => apiFetch<SystemStatus>("/api/v1/system/status"),
+
+  popularLeagues: () => apiFetch<PopularLeaguesResponse>("/api/v1/system/popular-leagues"),
 
   matchesToday: (params?: { model?: string; continent?: string; competition_id?: number }) =>
     apiFetch<MatchSummary[]>("/api/v1/matches/today", params),

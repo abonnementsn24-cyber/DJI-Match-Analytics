@@ -10,6 +10,7 @@ misleading), with accuracy reported alongside for context.
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
+from datetime import datetime
 
 from sqlalchemy.orm import Session
 
@@ -163,3 +164,47 @@ def backtest_compare(
         "best_model": best_model,
         "models": {model: report.as_dict() for model, report in reports.items()},
     }
+
+
+def persist_metrics_snapshot(db: Session, models: list[str], model_version: str = "1.0.0") -> int:
+    """Writes one ``model_metrics`` row per model (global — the full
+    evaluated history to date), for the nightly job (§19) to track model
+    performance over time without re-running a full backtest on every
+    dashboard load.
+    """
+    from ..models.metrics import ModelMetrics
+    from ..models.prediction import Prediction
+
+    now = datetime.utcnow()
+    written = 0
+
+    for model in models:
+        report = backtest_model(db, model)
+        if report.matches_evaluated == 0:
+            continue
+
+        earliest = (
+            db.query(Prediction.generated_at)
+            .filter(Prediction.model_name == model, Prediction.actual_result.isnot(None))
+            .order_by(Prediction.generated_at.asc())
+            .first()
+        )
+        period_start = earliest[0] if earliest else now
+
+        db.add(
+            ModelMetrics(
+                model_name=model,
+                model_version=model_version,
+                competition_id=None,
+                period_start=period_start,
+                period_end=now,
+                matches_count=report.matches_evaluated,
+                accuracy=report.accuracy,
+                brier_score=report.brier_score,
+                log_loss=report.log_loss,
+            )
+        )
+        written += 1
+
+    db.commit()
+    return written

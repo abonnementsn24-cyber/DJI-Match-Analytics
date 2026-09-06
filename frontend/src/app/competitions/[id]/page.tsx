@@ -49,6 +49,11 @@ export default async function CompetitionDetailPage({
           {competition.country} · {continentLabel(competition.continent)} · Qualité des données:{" "}
           {competition.data_quality}
         </p>
+        <p className="mt-1 text-xs text-text-secondary">
+          {competition.last_sync
+            ? `Dernière synchronisation : ${new Date(competition.last_sync).toLocaleString("fr-FR")}`
+            : "Jamais synchronisée (données de découverte uniquement, aucun match importé)."}
+        </p>
       </div>
 
       <div className="flex flex-wrap gap-1 rounded-lg border border-line bg-surface p-1 text-sm">

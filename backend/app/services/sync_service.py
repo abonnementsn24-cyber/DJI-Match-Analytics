@@ -196,6 +196,7 @@ def sync_matches(
             existing.last_synced_at = now
             updated += 1
 
+    competition.last_sync = now
     db.commit()
     recompute_data_quality(db, competition)
     db.commit()
@@ -245,3 +246,35 @@ def sync_competition(
         report.errors.append(str(exc))
 
     return report
+
+
+def sync_popular_leagues(
+    db: Session, provider: FootballProvider, codes: list[str] | None = None
+) -> dict:
+    """Syncs the curated priority list of popular leagues (§14 of the
+    extension brief: a priority list for *automatic* sync, not a coverage
+    restriction — discovery keeps finding every competition regardless).
+
+    Runs discovery first (idempotent) so a popular competition is always
+    known even on a fresh database, then syncs each one independently: one
+    league failing (rate limit, no current season yet, ...) never blocks
+    the others.
+    """
+    from .discovery_service import discover_competitions
+    from .popular_leagues import popular_league_codes
+
+    codes = codes or popular_league_codes()
+
+    try:
+        discover_competitions(db, provider)
+    except ProviderError as exc:
+        logger.warning("Discovery before popular-league sync failed: %s", exc)
+
+    results: dict[str, dict] = {}
+    for code in codes:
+        try:
+            report = sync_competition(db, provider, code)
+            results[code] = {"ok": not report.errors, **report.as_dict()}
+        except ValueError as exc:
+            results[code] = {"ok": False, "error": str(exc)}
+    return results

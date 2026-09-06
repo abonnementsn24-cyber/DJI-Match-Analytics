@@ -49,6 +49,14 @@ class Settings(BaseSettings):
     ensemble_h2h_max_adjustment: float = 0.15
     ensemble_rest_max_adjustment: float = 0.05
 
+    # Automatic updates (§19 of the brief). Disabled in tests (see
+    # tests/conftest.py) so pytest never starts a background scheduler.
+    enable_scheduler: bool = True
+    discover_interval_hours: int = 24
+    sync_popular_leagues_interval_hours: int = 6
+    evaluate_interval_minutes: int = 30
+    metrics_snapshot_interval_hours: int = 24
+
     @property
     def demo_mode(self) -> bool:
         return not bool(self.football_data_api_key)

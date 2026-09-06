@@ -236,6 +236,21 @@ export interface ModelMetricsEntry {
   monthly: MonthlyPoint[];
 }
 
+export interface PopularLeagueStatus {
+  code: string;
+  label: string;
+  country: string;
+  synced: boolean;
+  competition_id: number | null;
+  last_sync: string | null;
+  data_quality: string | null;
+}
+
+export interface PopularLeaguesResponse {
+  leagues: PopularLeagueStatus[];
+  unavailable: { requested: string; reason: string }[];
+}
+
 export interface SystemStatus {
   demo_mode: boolean;
   provider_configured: boolean;
