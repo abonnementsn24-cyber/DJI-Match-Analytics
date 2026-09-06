@@ -1,0 +1,12 @@
+**/.git
+**/__pycache__
+**/*.pyc
+**/.venv
+**/venv
+**/*.db
+**/.pytest_cache
+**/node_modules
+**/.next
+**/.env
+**/.env.local
+backend/app/ml/artifacts

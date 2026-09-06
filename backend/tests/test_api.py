@@ -1,104 +1,108 @@
-from datetime import datetime
 
 from fastapi.testclient import TestClient
 
-from app.database import SessionLocal, init_db
-from app.importer import import_matches
+from app.analytics.replay_engine import run_full_replay
 from app.main import app
+from app.services.evaluation_service import evaluate_finished_predictions
 
-init_db()
+from .helpers import seed_league
+
 client = TestClient(app)
 
 
 def test_health():
     response = client.get("/health")
     assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    assert response.json()["status"] == "ok"
 
 
-def test_predict_reports_insufficient_data_for_unknown_teams():
-    response = client.get("/predict", params={"home": "Nowhere FC", "away": "Nobody United"})
+def test_system_status_reports_demo_mode_by_default(db):
+    response = client.get("/api/v1/system/status")
     assert response.status_code == 200
     body = response.json()
+    assert body["demo_mode"] is True
+    assert body["provider_configured"] is False
+
+
+def test_competitions_tree_empty_when_nothing_discovered(db):
+    response = client.get("/api/v1/competitions")
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_matches_today_and_prediction_flow(db):
+    seed_league(db, n_teams=6, n_rounds=4)
+    run_full_replay(db)
+    evaluate_finished_predictions(db)
+
+    response = client.get("/api/v1/matches", params={"tab": "finished", "page_size": 5})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] > 0
+    match_id = body["results"][0]["id"]
+
+    prediction_response = client.get(f"/api/v1/matches/{match_id}/prediction")
+    assert prediction_response.status_code == 200
+    prediction = prediction_response.json()
+    assert prediction["reliable"] is True
+    assert 0.0 <= prediction["home_win_probability"] <= 1.0
+    assert len(prediction["top_scores"]) == 5
+
+    compare_response = client.get(f"/api/v1/matches/{match_id}/prediction", params={"compare": True})
+    assert compare_response.status_code == 200
+    assert set(compare_response.json()["models"].keys()) == {"basic", "form", "elo", "ensemble"}
+
+
+def test_prediction_reports_insufficient_data_for_new_teams(db):
+    seed_league(db, n_teams=3, n_rounds=1)
+    run_full_replay(db)
+
+    response = client.get("/api/v1/matches", params={"tab": "finished", "page_size": 1})
+    match_id = response.json()["results"][0]["id"]
+
+    prediction_response = client.get(f"/api/v1/matches/{match_id}/prediction")
+    body = prediction_response.json()
     assert body["reliable"] is False
-    assert "reason" in body
+    assert "insuffisantes" in body["reason"]
 
 
-def test_predict_returns_probabilities_once_enough_matches_exist():
-    init_db()
-    db = SessionLocal()
+def test_backtesting_endpoint(db):
+    seed_league(db, n_teams=6, n_rounds=4)
+    run_full_replay(db)
+    evaluate_finished_predictions(db)
+
+    response = client.get("/api/v1/backtesting")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["best_model"] in {"basic", "form", "elo", "ensemble"}
+
+
+def test_admin_endpoints_are_open_without_token_configured(db, monkeypatch):
+    from app.core.config import get_settings
+
+    get_settings.cache_clear()
+    response = client.post("/api/v1/admin/evaluate")
+    assert response.status_code == 200
+
+
+def test_admin_endpoints_require_bearer_token_when_configured(db, monkeypatch):
+    from app.core.config import get_settings
+
+    monkeypatch.setenv("ADMIN_API_TOKEN", "secret123")
+    get_settings.cache_clear()
     try:
-        matches = []
-        for i in range(6):
-            matches.append(
-                {
-                    "external_id": f"api-test-{i}",
-                    "competition": "Test League",
-                    "played_at": datetime.fromisoformat(f"2024-01-{i + 1:02d}T00:00:00"),
-                    "home_team": "Alpha FC",
-                    "away_team": "Beta United",
-                    "home_goals": 2,
-                    "away_goals": 1,
-                }
-            )
-        import_matches(db, matches)
+        no_token = client.post("/api/v1/admin/evaluate")
+        assert no_token.status_code == 401
+
+        with_token = client.post(
+            "/api/v1/admin/evaluate", headers={"Authorization": "Bearer secret123"}
+        )
+        assert with_token.status_code == 200
     finally:
-        db.close()
-
-    response = client.get("/predict", params={"home": "Alpha FC", "away": "Beta United"})
-    assert response.status_code == 200
-    body = response.json()
-    assert body["reliable"] is True
-    assert 0.0 <= body["home_win"] <= 1.0
-    assert len(body["top_scores"]) == 3
+        monkeypatch.delenv("ADMIN_API_TOKEN", raising=False)
+        get_settings.cache_clear()
 
 
-def test_predict_rejects_unknown_model():
-    response = client.get(
-        "/predict", params={"home": "Alpha FC", "away": "Beta United", "model": "nope"}
-    )
-    assert response.status_code == 400
-
-
-def test_predict_compare_returns_all_models():
-    response = client.get("/predict/compare", params={"home": "Alpha FC", "away": "Beta United"})
-    assert response.status_code == 200
-    body = response.json()
-    assert set(body.keys()) == {"simple", "form", "combined"}
-    for prediction in body.values():
-        assert prediction["reliable"] is True
-
-
-def test_team_stats_endpoint():
-    response = client.get("/teams/Alpha FC/stats")
-    assert response.status_code == 200
-    body = response.json()
-    assert body["team"] == "Alpha FC"
-    assert body["home"]["matches"] == 6
-
-
-def test_team_stats_endpoint_404_for_unknown_team():
-    response = client.get("/teams/Nobody At All/stats")
-    assert response.status_code == 404
-
-
-def test_h2h_endpoint():
-    response = client.get("/h2h", params={"team_a": "Alpha FC", "team_b": "Beta United"})
-    assert response.status_code == 200
-    body = response.json()
-    assert body["matches_played"] == 6
-    assert body["wins_a"] == 6
-
-
-def test_standings_endpoint():
-    response = client.get("/standings", params={"competition": "Test League"})
-    assert response.status_code == 200
-    body = response.json()
-    assert body[0]["team"] == "Alpha FC"
-
-
-def test_backtest_compare_endpoint():
-    response = client.get("/backtest/compare")
-    assert response.status_code == 200
-    body = response.json()
-    assert set(body["models"].keys()) == {"simple", "form", "combined"}
+def test_admin_sync_refuses_in_demo_mode(db):
+    response = client.post("/api/v1/admin/sync", params={"code": "PL"})
+    assert response.status_code == 409
