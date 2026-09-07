@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: emdji-match-analytics-backend
+    runtime: docker
+    dockerfilePath: ./docker/backend.Dockerfile
+    dockerContext: .
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: emdji-match-analytics-db
+          property: connectionString
+      - key: FOOTBALL_DATA_API_KEY
+        sync: false
+      - key: ADMIN_API_TOKEN
+        sync: false
+      - key: ENVIRONMENT
+        value: production
+      - key: ENABLE_SCHEDULER
+        value: "true"
+
+databases:
+  - name: emdji-match-analytics-db
+    plan: free
+    databaseName: emdji_match_analytics
+    user: emdji
