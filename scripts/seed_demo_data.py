@@ -3,8 +3,13 @@ dashboard can be exercised end-to-end without a football-data.org API key.
 
 Every competition/team name is prefixed "DEMO -" so it can never be
 mistaken for real data — the frontend reads this to show a "Mode démo"
-banner instead of "Données réelles". Real data always comes from
-``python -m app.cli discover`` + ``sync`` once FOOTBALL_DATA_API_KEY is set.
+banner instead of "Données réelles".
+
+If FOOTBALL_DATA_API_KEY is set, this script does NOT fabricate anything:
+it instead discovers competitions and syncs the popular leagues from the
+real provider (equivalent to ``python -m app.cli discover`` + ``sync-popular``).
+This lets the same startup command bootstrap either mode on a fresh
+(e.g. ephemeral) database without ever mixing demo and real data.
 
 Usage: python scripts/seed_demo_data.py
 """
@@ -18,6 +23,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "backend"))
 
+from app.core.config import get_settings
 from app.db.session import SessionLocal, init_db
 from app.models.competition import Competition, Season
 from app.models.country import Country
@@ -215,7 +221,33 @@ def seed_league(db, league: dict, match_index_start: int) -> int:
     return match_index
 
 
+def bootstrap_real_data() -> None:
+    """Called instead of the fabricated demo data whenever a real
+    FOOTBALL_DATA_API_KEY is configured, so a fresh (e.g. ephemeral) database
+    is populated with real discovered competitions and popular-league
+    matches rather than ever mixing in "DEMO -" fixtures."""
+    from app.providers.registry import get_provider
+    from app.services.discovery_service import discover_competitions
+    from app.services.sync_service import sync_popular_leagues
+
+    init_db()
+    db = SessionLocal()
+    try:
+        provider = get_provider("football-data")
+        report = discover_competitions(db, provider)
+        print("Découverte:", report.as_dict())
+        results = sync_popular_leagues(db, provider)
+        for code, result in results.items():
+            print(code, result)
+    finally:
+        db.close()
+
+
 def main() -> None:
+    if not get_settings().demo_mode:
+        bootstrap_real_data()
+        return
+
     init_db()
     db = SessionLocal()
     try:

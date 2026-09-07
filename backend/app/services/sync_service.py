@@ -275,6 +275,6 @@ def sync_popular_leagues(
         try:
             report = sync_competition(db, provider, code)
             results[code] = {"ok": not report.errors, **report.as_dict()}
-        except ValueError as exc:
+        except (ValueError, ProviderError) as exc:
             results[code] = {"ok": False, "error": str(exc)}
     return results
