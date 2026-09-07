@@ -102,7 +102,10 @@ def get_current_season(db: Session, competition: Competition) -> Season | None:
 def sync_teams(
     db: Session, provider: FootballProvider, competition: Competition, season: Season
 ) -> int:
-    teams = provider.get_teams(competition.provider_id, season.provider_id)
+    # football-data.org's `season` query filter expects the season's starting
+    # year (e.g. "2023"), not our internal Season.provider_id (their opaque
+    # season database id) — passing the id 404s the endpoint entirely.
+    teams = provider.get_teams(competition.provider_id, str(season.year_start))
     count = 0
     for t in teams:
         team = get_or_create_team(db, provider.name, t)
@@ -141,7 +144,7 @@ def sync_matches(
 ) -> tuple[int, int]:
     matches = provider.get_matches(
         competition.provider_id,
-        season.provider_id if season else None,
+        str(season.year_start) if season else None,
         status=status,
     )
 
